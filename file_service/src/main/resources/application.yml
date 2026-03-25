@@ -1,0 +1,16 @@
+server:
+  port: ${FILE_SERVER_PORT:8083}
+  servlet:
+    context-path: /file
+
+spring:
+  application:
+    name: file_service
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+
+app:
+  file:
+    storage-root: ${FILE_STORAGE_ROOT:storage}

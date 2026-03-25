@@ -1,0 +1,29 @@
+server:
+  port: ${IDENTITY_SERVER_PORT:9090}
+  servlet:
+    context-path: /identity
+
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/hantu_identity_service}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+jwt:
+  access-token-valid-duration: 3600
+  refresh-token-valid-duration: 36000
+  signer-key: ${JWT_SIGNER_KEY:339e5ce15cd01d5772f978c91e9ab8dd284df3eb1edf314e9ddd4ea2ccb5d936}
+  issuer: ${JWT_ISSUER:http://localhost:9090}
+  audience: ${JWT_AUDIENCE:hantu}
+
+app:
+  services:
+    profile: ${PROFILE_SERVICE_URL:http://localhost:8081/profile}

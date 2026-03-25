@@ -1,0 +1,128 @@
+services:
+  mysql:
+    # Keep major version compatible with existing data volume.
+    image: mysql:8.0
+    container_name: hantu-mysql
+    restart: unless-stopped
+    ports:
+      - 3306:3306
+    environment:
+      MYSQL_DATABASE: hantu_identity_service
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  mongodb:
+    image: mongo:latest
+    container_name: hantu-mongodb
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+
+  neo4j:
+    image: neo4j:latest
+    container_name: hantu-neo4j
+    ports:
+      - 7474:7474
+      - 7687:7687
+    restart: unless-stopped
+    environment:
+      NEO4J_ACCEPT_LICENSE_AGREEMENT: "yes"
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD}
+    volumes:
+      - neo4j_data:/data
+
+  file_service:
+    image: nguyenanh132/hantu-file-service:${TAG}
+    container_name: hantu-file-service
+    restart: unless-stopped
+    volumes:
+      - file_storage:/app/storage
+    environment:
+      APP_FILE_STORAGE_ROOT: ${FILE_STORAGE_ROOT:-/app/storage}
+
+  identity_service:
+    image: nguyenanh132/hantu-identity-service:${TAG}
+    container_name: hantu-identity-service
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: ${DB_URL:-jdbc:mysql://mysql:3306/hantu_identity_service}
+      SPRING_DATASOURCE_USERNAME: ${DB_USERNAME:-root}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      JWT_SIGNER_KEY: ${JWT_SIGNER_KEY}
+      JWT_ISSUER: ${JWT_ISSUER}
+      APP_SERVICES_PROFILE: ${PROFILE_SERVICE_URL:-http://hantu-profile-service:8081/profile}
+    ports:
+      - "127.0.0.1:${IDENTITY_SERVER_PORT:-9090}:9090"
+
+  profile_service:
+    image: nguyenanh132/hantu-profile-service:${TAG}
+    container_name: hantu-profile-service
+    restart: unless-stopped
+    depends_on:
+      - neo4j
+      - file_service
+    environment:
+      SPRING_NEO4J_URI: ${NEO4J_URI:-bolt://neo4j:7687}
+      SPRING_NEO4J_AUTHENTICATION_USERNAME: ${NEO4J_USERNAME:-neo4j}
+      SPRING_NEO4J_AUTHENTICATION_PASSWORD: ${NEO4J_PASSWORD}
+      APP_SERVICES_IDENTITY: ${IDENTITY_SERVICE_URL:-http://hantu-identity-service:9090}
+      APP_SERVICES_FILE: ${FILE_SERVICE_CONTEXT_URL:-http://hantu-file-service:8083/file}
+
+  post_service:
+    image: nguyenanh132/hantu-post-service:${TAG}
+    container_name: hantu-post-service
+    restart: unless-stopped
+    depends_on:
+      - mongodb
+      - profile_service
+    environment:
+      SPRING_MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017}
+      SPRING_MONGODB_DATABASE: ${MONGODB_DATABASE:-hantu_post_service}
+      APP_SERVICES_PROFILE: ${PROFILE_SERVICE_CONTEXT_URL:-http://hantu-profile-service:8081/profile}
+
+  api_gateway:
+    image: nguyenanh132/hantu-api-gateway:${TAG}
+    container_name: hantu-api-gateway
+    restart: unless-stopped
+    depends_on:
+      - identity_service
+      - profile_service
+      - post_service
+      - file_service
+    environment:
+      IDENTITY_SERVICE_URI: http://hantu-identity-service:9090
+      PROFILE_SERVICE_URI: http://hantu-profile-service:8081
+      POST_SERVICE_URI: http://hantu-post-service:8082
+      FILE_SERVICE_URI: http://hantu-file-service:8083
+      IDENTITY_SERVICE_URL: http://hantu-identity-service:9090
+      IDENTITY_SERVICE_CONTEXT_URL: http://hantu-identity-service:9090/identity
+      PROFILE_SERVICE_URL: http://hantu-profile-service:8081
+      POST_SERVICE_URL: http://hantu-post-service:8082
+      FILE_SERVICE_URL: http://hantu-file-service:8083
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+    ports:
+      - "127.0.0.1:${API_GATEWAY_SERVER_PORT:-8888}:8888"
+
+  frontend:
+    image: nguyenanh132/hantu-frontend:${TAG}
+    container_name: hantu-frontend
+    restart: unless-stopped
+    depends_on:
+      - api_gateway
+    ports:
+      - "127.0.0.1:8088:80"
+
+volumes:
+  mysql_data:
+  mongo_data:
+  neo4j_data:
+  file_storage:
